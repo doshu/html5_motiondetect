@@ -1,0 +1,186 @@
+
+<video id="video" src="v.webm" style="width:384px; height:288px;" controls></video>
+<canvas id="canvas" style="width:384px; height:288px;"></canvas>
+<div></div>
+<input type="range" value="10" min="0" max="255" id="tolleranza"><input type="text" id="tolleranza-val">
+
+<script>
+
+	var v = document.getElementById('video');
+	var c = document.getElementById('canvas');
+	var frame1 = null;
+	var frame2 = null;
+	var d;
+	
+	function getRGB(m, i) {
+		return [m.data[i], m.data[i+1], m.data[i+2]];
+	}
+	
+	function setRGB(m, i, r, g ,b) {
+		m.data[i] = r;
+		m.data[i+1] = g;
+		m.data[i+2] = b;
+	}
+	
+	function createRGB() {
+	
+		if(typeof(colours) == "undefined")
+			colours = Array();
+			
+		if(typeof(colours_count) == "undefined")
+			colours_count = 0;
+		
+		if(typeof(colours[colours_count]) == "undefined") {
+			colours[colours_count] = [Math.floor(Math.random()*256), Math.floor(Math.random()*256), Math.floor(Math.random()*256)];
+		}
+		
+		colours_count++;
+		return colours[colours_count-1];
+	}
+	
+	function resetRGB() {
+		if(typeof(colours_count) != "undefined")
+			colours_count = 0;
+	}
+	
+	function createMatrix() {
+		var matrix = Array();
+		var m = c.getContext('2d').getImageData(0, 0, 384, 288);
+		
+		for(var i = 0; i < m.data.length; i = i+4) {
+			var v = m.data[i] == 0?0:1;
+			
+			var ii = parseInt(i/4);
+			var row = parseInt(ii/384);
+			var col = parseInt(ii%384);
+			
+			if(!(matrix[row] instanceof Array))
+				 matrix[row] = Array();
+			//matrix[row][col] = {value:v, visited:false};
+			matrix[row][col] = v;
+		}
+		
+		return matrix;
+	}
+	
+	function findExit(matrix, i, j, cc, color) {
+		
+		matrix[i][j] = 0;
+		//cc = c.getContext('2d').getImageData(0, 0, 384, 288);
+		setRGB(cc, ((i*384)+j)*4, color[0], color[1], color[2]);
+		//cc.data[((i*384)+j)*4] = color;
+		//c.getContext('2d').putImageData(cc, 0, 0);
+		
+		try {
+			if(j >= 1) 
+				if(matrix[i][j-1] == 1)
+					findExit(matrix, i, j-1, cc, color);
+				
+			if(j < 383) 
+				if(matrix[i][j+1] == 1)
+					findExit(matrix, i, j+1, cc, color);
+				
+			if(i < 287) 
+				if(matrix[i+1][j] == 1)
+					findExit(matrix, i+1, j, cc, color);
+				
+			if(i >= 1) 
+				if(matrix[i-1][j] == 1)
+					findExit(matrix, i-1, j, cc, color);
+		} catch(e) {
+			console.log("Troppo movimenti!");
+		}
+		
+		return;
+	}
+	
+	function visit() {
+		
+		resetRGB();
+		var cc = c.getContext('2d').getImageData(0, 0, 384, 288);
+		var matrix = createMatrix();
+		for(var i = 0; i < matrix.length; i++) {
+			for(var j = 0; j < matrix[i].length; j++) {
+				if(matrix[i][j] == 1) {
+					findExit(matrix, i, j, cc, createRGB());
+					//console.log(i+" "+j);
+					//return;
+				}
+			}
+		}
+		c.getContext('2d').putImageData(cc, 0, 0);
+	}
+	
+	function getFrame(video) {
+	
+		var tmpc = document.createElement('canvas');
+		tmpc.getContext('2d').drawImage(v, 0, 0, 384, 288, 0, 0, 300, 150);
+		var tmpi = tmpc.getContext('2d').getImageData(0, 0, 384, 288);
+		
+		
+		if(frame1 == null) {
+			frame1 = tmpi;
+			return true;
+		}
+		
+		if(frame2 == null) {
+			frame2 = tmpi;
+			return true;
+		}
+		
+		frame1 = frame2;
+		frame2 = tmpi;
+		
+	}
+	
+	function draw() {
+		getFrame(v);
+		if(frame1 == null || frame2 == null)
+			return;
+		
+		var g1 = toGrayScale(frame1);
+		var g2 = toGrayScale(frame2);
+		var t = document.getElementById('tolleranza').value;
+		var m = getMotionDetect(g1, g2, t);
+		
+		c.getContext('2d').putImageData(m, 0, 0);
+		visit();
+	}
+	
+	function toGrayScale(image) {
+		
+		for(var i = 0; i < image.data.length; i = i+4) {
+			var g = (0.2126*image.data[i]) + (0.7152*image.data[i+1]) + (0.0722*image.data[i+2]);
+			image.data[i] = image.data[i+1] = image.data[i+2] = g;
+		}
+		return image;
+	}
+	
+	function getMotionDetect(m1, m2, t) {
+	
+		var motion = c.getContext('2d').createImageData(384, 288);
+		for(var i = 0; i < m1.data.length; i = i+4) {
+			if(Math.abs(m1.data[i] - m2.data[i]) > t)
+				motion.data[i] = motion.data[i+1] = motion.data[i+2] = 255;
+			else
+				motion.data[i] = motion.data[i+1] = motion.data[i+2] = 0;
+			motion.data[i+3] = 255;
+		}
+		
+		return motion;
+	}
+	
+	v.addEventListener('play', function() {
+		d = setInterval(draw, 60);
+	});
+	
+	v.addEventListener('pause', function() {
+		clearInterval(d);
+	});
+	
+	document.getElementById('tolleranza').addEventListener('change', function() {
+		document.getElementById('tolleranza-val').value = this.value;
+	});
+	
+	document.getElementById('tolleranza').dispatchEvent(new Event('change'));
+</script>
